@@ -63,7 +63,7 @@ function App() {
   return (
     <Routes>
       {/* Auth Routes */}
-      <ToastContainer position="top-center" autoClose={3000} />
+      {/* <ToastContainer position="top-center" autoClose={3000} /> */}
       <Route path="/" element={<PublicRoute><Navigate to="/login" /></PublicRoute>} />
       <Route path="/login" element={<PublicRoute><AuthLayout><Login /></AuthLayout></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><AuthLayout><Register /></AuthLayout></PublicRoute>} />
