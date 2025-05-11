@@ -1,7 +1,15 @@
 const mongoose = require('mongoose');
 
-const waypointSchema = new mongoose.Schema({
+const WaypointSchema = new mongoose.Schema({
   order: {
+    type: Number,
+    required: true
+  },
+  lat: {
+    type: Number,
+    required: true
+  },
+  lng: {
     type: Number,
     required: true
   },
@@ -9,85 +17,62 @@ const waypointSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  coordinates: {
-    type: [Number], // [longitude, latitude]
-    required: true
-  },
   action: {
     type: String,
-    enum: ['takePhoto', 'recordVideo', 'hover', 'landingPoint', 'takeoffPoint'],
-    default: 'hover'
+    enum: ['navigate', 'hover', 'capture', 'return'],
+    default: 'navigate'
   },
-  duration: Number // in seconds (for hover)
-});
-
-const flightPathSchema = new mongoose.Schema({
-  type: {
-    type: String,
-    enum: ['manual', 'grid', 'perimeter', 'crosshatch'],
-    default: 'manual'
+  hoverTime: {
+    type: Number, // in seconds
+    default: 0
   },
-  waypoints: [waypointSchema],
-  coverageArea: {
-    type: {
+  captureSettings: {
+    sensorType: {
       type: String,
-      enum: ['Polygon'],
-      default: 'Polygon'
+      enum: ['RGB camera', 'thermal camera', 'LiDAR', 'multispectral', 'infrared', 'gas sensor', 'other'],
+      default: 'RGB camera'
     },
-    coordinates: {
-      type: [[[Number]]], // GeoJSON format for polygon
-      required: function() {
-        return ['grid', 'perimeter', 'crosshatch'].includes(this.type);
-      }
+    captureMode: {
+      type: String,
+      enum: ['single', 'burst', 'interval', 'video'],
+      default: 'single'
+    },
+    captureCount: {
+      type: Number,
+      default: 1
+    },
+    intervalTime: {
+      type: Number, // in seconds
+      default: 0
     }
-  },
-  altitude: Number, // in meters
-  overlapPercentage: {
-    type: Number,
-    min: 0,
-    max: 100,
-    default: 60
   }
 });
 
-const missionSchema = new mongoose.Schema({
+const MissionSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, 'Mission name is required'],
-    trim: true
+    required: [true, 'Please provide a mission name'],
+    trim: true,
+    maxlength: [100, 'Name cannot be more than 100 characters']
   },
   description: {
     type: String,
-    trim: true
+    maxlength: [500, 'Description cannot be more than 500 characters']
   },
-  drone: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Drone',
-    required: [true, 'Drone is required for mission']
-  },
-  site: {
+  missionType: {
     type: String,
-    required: [true, 'Site location is required']
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'User reference is required']
+    enum: ['inspection', 'mapping', 'surveillance', 'delivery', 'custom'],
+    required: [true, 'Please specify mission type']
   },
   status: {
     type: String,
-    enum: ['scheduled', 'in-progress', 'completed', 'aborted', 'failed'],
-    default: 'scheduled'
+    enum: ['planned', 'queued', 'in-progress', 'paused', 'completed', 'aborted', 'failed'],
+    default: 'planned'
   },
-  flightPath: flightPathSchema,
-  dataCollectionParams: {
-    frequency: Number, // in seconds
-    sensors: [String],
-    captureMode: {
-      type: String,
-      enum: ['continuous', 'waypoints', 'intervals'],
-      default: 'waypoints'
-    }
+  priority: {
+    type: String,
+    enum: ['low', 'medium', 'high', 'critical'],
+    default: 'medium'
   },
   progress: {
     type: Number,
@@ -95,35 +80,127 @@ const missionSchema = new mongoose.Schema({
     max: 100,
     default: 0
   },
-  scheduledStart: {
-    type: Date,
-    required: [true, 'Start time is required']
+  surveyAreaName: {
+    type: String,
+    required: [true, 'Please provide a survey area name']
   },
-  actualStart: Date,
-  actualEnd: Date,
-  estimatedDuration: Number, // in minutes
-  logs: [{
-    timestamp: {
-      type: Date,
-      default: Date.now
+  surveyArea: {
+    type: {
+      type: String,
+      enum: ['Polygon'],
+      required: true
     },
-    event: String,
-    details: mongoose.Schema.Types.Mixed
-  }],
-  currentPosition: {
-    coordinates: [Number], // [longitude, latitude]
-    altitude: Number,
-    timestamp: Date
+    coordinates: {
+      type: [[[Number]]], // GeoJSON Polygon format
+      required: true
+    }
+  },
+  flightPattern: {
+    type: String,
+    enum: ['grid', 'crosshatch', 'spiral', 'perimeter', 'custom'],
+    default: 'grid'
+  },
+  patternParameters: {
+    overlap: {
+      type: Number, // percentage
+      default: 70
+    },
+    sideOverlap: {
+      type: Number, // percentage
+      default: 60
+    },
+    altitude: {
+      type: Number, // meters
+      required: [true, 'Please specify flight altitude']
+    },
+    speed: {
+      type: Number, // m/s
+      required: [true, 'Please specify flight speed']
+    },
+    spacing: {
+      type: Number, // meters between flight lines
+      default: 50
+    }
+  },
+  waypoints: [WaypointSchema],
+  currentWaypoint: {
+    type: Number,
+    default: 0
+  },
+  droneId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Drone',
+    default: null
+  },
+  organizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    required: [true, 'Please provide an organization ID']
+  },
+  estimatedDuration: {
+    type: Number, // in minutes
+    required: [true, 'Please provide estimated mission duration']
+  },
+  estimatedDistance: {
+    type: Number, // in kilometers
+    required: [true, 'Please provide estimated mission distance']
+  },
+  estimatedTimeRemaining: {
+    type: Number, // in seconds
+    default: 0
+  },
+  scheduledTime: {
+    type: Date,
+    default: null
+  },
+  startTime: {
+    type: Date,
+    default: null
+  },
+  endTime: {
+    type: Date,
+    default: null
+  },
+  missionParameters: {
+    captureInterval: {
+      type: Number, // in seconds
+      default: 5
+    },
+    sensors: [{
+      type: String,
+      enum: ['RGB camera', 'thermal camera', 'LiDAR', 'multispectral', 'infrared', 'gas sensor', 'other']
+    }],
+    returnToHome: {
+      type: Boolean,
+      default: true
+    },
+    avoidanceEnabled: {
+      type: Boolean,
+      default: true
+    }
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
   },
   createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
     type: Date,
     default: Date.now
   }
 });
 
-// Index for geospatial queries
-missionSchema.index({ 'flightPath.coverageArea': '2dsphere' });
-missionSchema.index({ 'currentPosition.coordinates': '2dsphere' });
+// Update timestamps when updating a document
+MissionSchema.pre('findOneAndUpdate', function(next) {
+  this.set({ updatedAt: Date.now() });
+  next();
+});
 
-const Mission = mongoose.model('Mission', missionSchema);
-module.exports = Mission;
+// Add a 2dsphere index for geo queries
+MissionSchema.index({ surveyArea: '2dsphere' });
+
+module.exports = mongoose.model('Mission', MissionSchema);

@@ -1,33 +1,56 @@
+/**
+ * Mission planning and execution routes
+ */
 const express = require('express');
-const missionController = require('../controllers/missionController');
-const authController = require('../controllers/authController');
+const {
+  getMissions,
+  getMission,
+  createMission,
+  updateMission,
+  deleteMission,
+  updateMissionProgress,
+  startMission,
+  completeMission,
+  abortMission
+} = require('../controllers/missionController');
+
+// Include report controller for mission reports routes
+const { getMissionReports } = require('../controllers/reportController');
+
+const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Protect all routes after this middleware
-router.use(authController.protect);
+// Protect all routes
+router.use(protect);
 
-router
-  .route('/')
-  .get(missionController.getAllMissions)
-  .post(missionController.createMission);
+// Mission CRUD routes
+router.route('/')
+  .get(getMissions)
+  .post(createMission);
 
-router
-  .route('/:id')
-  .get(missionController.getMission)
-  .patch(missionController.updateMission)
-  .delete(missionController.deleteMission);
+// Single mission routes
+router.route('/:id')
+  .get(getMission)
+  .put(updateMission)
+  .delete(deleteMission);
 
-router
-  .route('/:id/status')
-  .patch(missionController.updateMissionStatus);
+// Mission control routes
+router.route('/:id/start')
+  .post(startMission);
 
-router
-  .route('/site/:site')
-  .get(missionController.getMissionsBySite);
+router.route('/:id/complete')
+  .post(completeMission);
 
-router
-  .route('/active')
-  .get(missionController.getActiveMissions);
+router.route('/:id/abort')
+  .post(abortMission);
+
+// Mission progress routes
+router.route('/:id/progress')
+  .patch(updateMissionProgress);
+
+// Mission reports routes
+router.route('/:missionId/reports')
+  .get(getMissionReports);
 
 module.exports = router;

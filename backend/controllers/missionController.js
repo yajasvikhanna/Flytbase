@@ -1,296 +1,594 @@
-// backend/controllers/missionController.js
+/**
+ * Mission controller
+ * Handles mission planning, execution, and monitoring
+ */
 const Mission = require('../models/Mission');
 const Drone = require('../models/Drone');
 const Report = require('../models/Report');
 
-// Get all missions
-exports.getAllMissions = async (req, res) => {
+// @desc    Get all missions
+// @route   GET /api/missions
+// @access  Private
+exports.getMissions = async (req, res, next) => {
   try {
-    const missions = await Mission.find()
-      .populate('drone', 'name serialNumber status batteryLevel')
-      .populate('createdBy', 'name email');
-    
+    let query;
+
+    // Copy req.query
+    const reqQuery = { ...req.query };
+
+    // Fields to exclude from matching
+    const removeFields = ['select', 'sort', 'page', 'limit'];
+    removeFields.forEach(param => delete reqQuery[param]);
+
+    // Create query string
+    let queryStr = JSON.stringify(reqQuery);
+
+    // Create operators ($gt, $gte, etc)
+    queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
+
+    // Finding resource
+    query = Mission.find(JSON.parse(queryStr))
+      .populate('drone', 'name model status batteryLevel')
+      .populate('createdBy', 'name');
+
+    // Select fields
+    if (req.query.select) {
+      const fields = req.query.select.split(',').join(' ');
+      query = query.select(fields);
+    }
+
+    // Sort
+    if (req.query.sort) {
+      const sortBy = req.query.sort.split(',').join(' ');
+      query = query.sort(sortBy);
+    } else {
+      query = query.sort('-createdAt');
+    }
+
+    // Pagination
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    const total = await Mission.countDocuments(JSON.parse(queryStr));
+
+    query = query.skip(startIndex).limit(limit);
+
+    // Executing query
+    const missions = await query;
+
+    // Pagination result
+    const pagination = {};
+
+    if (endIndex < total) {
+      pagination.next = {
+        page: page + 1,
+        limit
+      };
+    }
+
+    if (startIndex > 0) {
+      pagination.prev = {
+        page: page - 1,
+        limit
+      };
+    }
+
     res.status(200).json({
-      status: 'success',
-      results: missions.length,
-      data: {
-        missions
-      }
+      success: true,
+      count: missions.length,
+      pagination,
+      data: missions
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
+    next(error);
   }
 };
 
-// Get active missions
-exports.getActiveMissions = async (req, res) => {
-  try {
-    const missions = await Mission.find({ 
-      status: { $in: ['scheduled', 'in-progress'] } 
-    })
-      .populate('drone', 'name serialNumber status batteryLevel')
-      .populate('createdBy', 'name email');
-    
-    res.status(200).json({
-      status: 'success',
-      results: missions.length,
-      data: {
-        missions
-      }
-    });
-  } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
-  }
-};
-
-// Get single mission
-exports.getMission = async (req, res) => {
+// @desc    Get single mission
+// @route   GET /api/missions/:id
+// @access  Private
+exports.getMission = async (req, res, next) => {
   try {
     const mission = await Mission.findById(req.params.id)
-      .populate('drone', 'name serialNumber status batteryLevel')
-      .populate('createdBy', 'name email');
-    
+      .populate('drone', 'name model status batteryLevel')
+      .populate('createdBy', 'name');
+
     if (!mission) {
       return res.status(404).json({
-        status: 'fail',
-        message: 'No mission found with that ID'
+        success: false,
+        message: `Mission not found with id of ${req.params.id}`
       });
     }
-    
+
     res.status(200).json({
-      status: 'success',
-      data: {
-        mission
-      }
+      success: true,
+      data: mission
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
+    next(error);
   }
 };
 
-// Create new mission
-exports.createMission = async (req, res) => {
+// @desc    Create new mission
+// @route   POST /api/missions
+// @access  Private
+exports.createMission = async (req, res, next) => {
   try {
-    // Add user ID from token
+    // Add user to req.body
     req.body.createdBy = req.user.id;
-    
-    // Check if drone is available
-    const drone = await Drone.findById(req.body.drone);
-    
-    if (!drone) {
-      return res.status(404).json({
-        status: 'fail',
-        message: 'No drone found with that ID'
-      });
-    }
-    
-    if (drone.status !== 'available') {
-      return res.status(400).json({
-        status: 'fail',
-        message: `Drone is currently ${drone.status} and cannot be assigned to a new mission`
-      });
-    }
-    
-    // Create the mission
-    const newMission = await Mission.create(req.body);
-    
-    // Update drone status to 'in-mission'
-    await Drone.findByIdAndUpdate(req.body.drone, { status: 'in-mission' });
-    
-    res.status(201).json({
-      status: 'success',
-      data: {
-        mission: newMission
+    req.body.organization = req.user.organization;
+
+    // Check if drone exists and is available
+    if (req.body.drone) {
+      const drone = await Drone.findById(req.body.drone);
+
+      if (!drone) {
+        return res.status(404).json({
+          success: false,
+          message: `No drone found with id of ${req.body.drone}`
+        });
       }
+
+      // Check if drone belongs to user's organization
+      if (drone.organization.toString() !== req.user.organization && req.user.role !== 'admin') {
+        return res.status(403).json({
+          success: false,
+          message: `User not authorized to use drone ${req.body.drone}`
+        });
+      }
+
+      // Check if drone is available
+      if (drone.status !== 'available' && req.body.status === 'scheduled') {
+        return res.status(400).json({
+          success: false,
+          message: `Drone ${req.body.drone} is not available for scheduling`
+        });
+      }
+    }
+
+    const mission = await Mission.create(req.body);
+
+    // If mission is scheduled, update drone status
+    if (mission.status === 'scheduled' && mission.drone) {
+      await Drone.findByIdAndUpdate(mission.drone, { status: 'assigned' });
+    }
+
+    // Emit mission created event
+    req.io.emit('missionCreated', { mission });
+
+    res.status(201).json({
+      success: true,
+      data: mission
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
+    next(error);
   }
 };
 
-// Update mission
-exports.updateMission = async (req, res) => {
+// @desc    Update mission
+// @route   PUT /api/missions/:id
+// @access  Private
+exports.updateMission = async (req, res, next) => {
   try {
-    const mission = await Mission.findByIdAndUpdate(req.params.id, req.body, {
+    let mission = await Mission.findById(req.params.id);
+
+    if (!mission) {
+      return res.status(404).json({
+        success: false,
+        message: `Mission not found with id of ${req.params.id}`
+      });
+    }
+
+    // Make sure user is mission creator or admin
+    if (
+      mission.createdBy.toString() !== req.user.id &&
+      req.user.role !== 'admin'
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: `User ${req.user.id} is not authorized to update this mission`
+      });
+    }
+
+    // Check if drone is being changed
+    if (req.body.drone && req.body.drone !== mission.drone.toString()) {
+      const newDrone = await Drone.findById(req.body.drone);
+      
+      if (!newDrone) {
+        return res.status(404).json({
+          success: false,
+          message: `No drone found with id of ${req.body.drone}`
+        });
+      }
+
+      // Check if new drone belongs to user's organization
+      if (newDrone.organization.toString() !== req.user.organization && req.user.role !== 'admin') {
+        return res.status(403).json({
+          success: false,
+          message: `User not authorized to use drone ${req.body.drone}`
+        });
+      }
+
+      // Check if new drone is available
+      if (newDrone.status !== 'available' && req.body.status === 'scheduled') {
+        return res.status(400).json({
+          success: false,
+          message: `Drone ${req.body.drone} is not available for scheduling`
+        });
+      }
+
+      // If there was a previous drone, update its status
+      if (mission.drone) {
+        await Drone.findByIdAndUpdate(mission.drone, { status: 'available' });
+      }
+
+      // Update new drone status
+      if (req.body.status === 'scheduled') {
+        await Drone.findByIdAndUpdate(req.body.drone, { status: 'assigned' });
+      }
+    }
+
+    // Check for status change
+    if (req.body.status && req.body.status !== mission.status) {
+      // If starting mission
+      if (req.body.status === 'in-progress' && mission.drone) {
+        await Drone.findByIdAndUpdate(mission.drone, { status: 'in-mission' });
+      }
+      
+      // If completing or aborting mission
+      if (['completed', 'aborted'].includes(req.body.status) && mission.drone) {
+        await Drone.findByIdAndUpdate(mission.drone, { status: 'available' });
+        
+        // If mission completed successfully, generate a report
+        if (req.body.status === 'completed') {
+          // Calculate mission statistics
+          const endTime = req.body.endTime || new Date();
+          const duration = (endTime - mission.startTime) / (1000 * 60); // in minutes
+          
+          // Create a mission report
+          await Report.create({
+            missionId: mission._id,
+            missionName: mission.name,
+            droneId: mission.drone,
+            startTime: mission.startTime,
+            endTime,
+            duration,
+            surveyType: mission.surveyType,
+            coverageArea: mission.coverageArea,
+            waypoints: mission.waypoints,
+            status: 'completed',
+            createdBy: req.user.id
+          });
+        }
+      }
+    }
+
+    mission = await Mission.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
     });
-    
-    if (!mission) {
-      return res.status(404).json({
-        status: 'fail',
-        message: 'No mission found with that ID'
-      });
-    }
-    
+
+    // Emit mission update event
+    req.io.emit('missionUpdated', { mission });
+
     res.status(200).json({
-      status: 'success',
-      data: {
-        mission
-      }
+      success: true,
+      data: mission
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
+    next(error);
   }
 };
 
-// Delete mission
-exports.deleteMission = async (req, res) => {
+// @desc    Delete mission
+// @route   DELETE /api/missions/:id
+// @access  Private
+exports.deleteMission = async (req, res, next) => {
   try {
     const mission = await Mission.findById(req.params.id);
-    
-    if (!mission) {
-      return res.status(404).json({
-        status: 'fail',
-        message: 'No mission found with that ID'
-      });
-    }
-    
-    // Only allow deletion of scheduled missions
-    if (mission.status !== 'scheduled') {
-      return res.status(400).json({
-        status: 'fail',
-        message: `Cannot delete a mission that is ${mission.status}`
-      });
-    }
-    
-    await Mission.findByIdAndDelete(req.params.id);
-    
-    // Free up the drone if the mission is scheduled
-    await Drone.findByIdAndUpdate(mission.drone, { status: 'available' });
-    
-    res.status(204).json({
-      status: 'success',
-      data: null
-    });
-  } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
-  }
-};
 
-// Update mission status
-exports.updateMissionStatus = async (req, res) => {
-  try {
-    const { status, progress, currentPosition, log } = req.body;
-    
-    if (!status) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Please provide status'
-      });
-    }
-    
-    const mission = await Mission.findById(req.params.id);
-    
     if (!mission) {
       return res.status(404).json({
-        status: 'fail',
-        message: 'No mission found with that ID'
+        success: false,
+        message: `Mission not found with id of ${req.params.id}`
       });
     }
-    
-    // Update fields
-    mission.status = status;
-    
-    if (progress !== undefined) {
-      mission.progress = progress;
-    }
-    
-    if (currentPosition) {
-      mission.currentPosition = {
-        ...currentPosition,
-        timestamp: new Date()
-      };
-    }
-    
-    // Add log entry if provided
-    if (log) {
-      mission.logs.push({
-        timestamp: new Date(),
-        event: log.event,
-        details: log.details || {}
+
+    // Make sure user is mission creator or admin
+    if (
+      mission.createdBy.toString() !== req.user.id &&
+      req.user.role !== 'admin'
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: `User ${req.user.id} is not authorized to delete this mission`
       });
     }
-    
-    // Handle mission start and completion
-    if (status === 'in-progress' && !mission.actualStart) {
-      mission.actualStart = new Date();
-    } else if (['completed', 'aborted', 'failed'].includes(status) && !mission.actualEnd) {
-      mission.actualEnd = new Date();
-      
-      // Generate report on mission completion
-      const report = await Report.create({
-        mission: mission._id,
-        drone: mission.drone,
-        title: `${mission.name} - ${status.toUpperCase()} Report`,
-        status: 'complete',
-        flightStats: {
-          duration: mission.actualStart ? 
-            (new Date() - new Date(mission.actualStart)) / (1000 * 60) : 0, // duration in minutes
-          // Other stats to be calculated
-        },
-        summary: `Mission ${mission.name} ${status} at ${new Date().toISOString()}`,
-        missionLogs: mission.logs
+
+    // Can't delete missions in progress
+    if (mission.status === 'in-progress') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete a mission that is currently in progress'
       });
-      
-      // Update drone status back to available
+    }
+
+    // If mission was scheduled, update drone status
+    if (mission.status === 'scheduled' && mission.drone) {
       await Drone.findByIdAndUpdate(mission.drone, { status: 'available' });
     }
-    
-    await mission.save();
-    
+
+    await mission.remove();
+
+    // Emit mission deleted event
+    req.io.emit('missionDeleted', { missionId: req.params.id });
+
     res.status(200).json({
-      status: 'success',
-      data: {
-        mission
-      }
+      success: true,
+      data: {}
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
+    next(error);
   }
 };
 
-// Get missions by site
-exports.getMissionsBySite = async (req, res) => {
+// @desc    Update mission progress
+// @route   PATCH /api/missions/:id/progress
+// @access  Private
+exports.updateMissionProgress = async (req, res, next) => {
   try {
-    const { site } = req.params;
-    
-    const missions = await Mission.find({ site })
-      .populate('drone', 'name serialNumber status batteryLevel')
-      .populate('createdBy', 'name email');
-    
+    const { progress, currentWaypointIndex, currentLocation, altitude } = req.body;
+
+    const mission = await Mission.findById(req.params.id);
+
+    if (!mission) {
+      return res.status(404).json({
+        success: false,
+        message: `Mission not found with id of ${req.params.id}`
+      });
+    }
+
+    // Update mission progress fields
+    const updateData = {};
+    if (progress !== undefined) updateData.progress = progress;
+    if (currentWaypointIndex !== undefined) updateData.currentWaypointIndex = currentWaypointIndex;
+    if (currentLocation) updateData.currentLocation = currentLocation;
+    if (altitude !== undefined) updateData.currentAltitude = altitude;
+
+    const updatedMission = await Mission.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    // Emit mission progress update
+    req.io.emit('missionProgressUpdate', { 
+      missionId: mission._id,
+      ...updateData
+    });
+
+    // Also update drone location if available
+    if (mission.drone && currentLocation) {
+      await Drone.findByIdAndUpdate(mission.drone, {
+        currentLocation,
+        currentAltitude: altitude
+      });
+
+      // Emit drone location update
+      req.io.emit('droneLocationUpdate', { 
+        droneId: mission.drone,
+        currentLocation,
+        currentAltitude: altitude
+      });
+    }
+
     res.status(200).json({
-      status: 'success',
-      results: missions.length,
-      data: {
-        missions
-      }
+      success: true,
+      data: updatedMission
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
+    next(error);
+  }
+};
+
+// @desc    Get missions by drone
+// @route   GET /api/drones/:droneId/missions
+// @access  Private
+exports.getDroneMissions = async (req, res, next) => {
+  try {
+    const missions = await Mission.find({ drone: req.params.droneId })
+      .sort('-createdAt');
+
+    res.status(200).json({
+      success: true,
+      count: missions.length,
+      data: missions
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Start a mission
+// @route   POST /api/missions/:id/start
+// @access  Private
+exports.startMission = async (req, res, next) => {
+  try {
+    const mission = await Mission.findById(req.params.id);
+
+    if (!mission) {
+      return res.status(404).json({
+        success: false,
+        message: `Mission not found with id of ${req.params.id}`
+      });
+    }
+
+    // Check if mission is in scheduled state
+    if (mission.status !== 'scheduled') {
+      return res.status(400).json({
+        success: false,
+        message: `Mission with ID ${req.params.id} is not in scheduled state`
+      });
+    }
+
+    // Update mission status and start time
+    mission.status = 'in-progress';
+    mission.startTime = new Date();
+    mission.progress = 0;
+    mission.currentWaypointIndex = 0;
+    await mission.save();
+
+    // Update drone status
+    if (mission.drone) {
+      await Drone.findByIdAndUpdate(mission.drone, { status: 'in-mission' });
+    }
+
+    // Emit mission started event
+    req.io.emit('missionStarted', { mission });
+
+    res.status(200).json({
+      success: true,
+      data: mission
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Complete a mission
+// @route   POST /api/missions/:id/complete
+// @access  Private
+exports.completeMission = async (req, res, next) => {
+  try {
+    const mission = await Mission.findById(req.params.id);
+
+    if (!mission) {
+      return res.status(404).json({
+        success: false,
+        message: `Mission not found with id of ${req.params.id}`
+      });
+    }
+
+    // Check if mission is in progress
+    if (mission.status !== 'in-progress') {
+      return res.status(400).json({
+        success: false,
+        message: `Mission with ID ${req.params.id} is not in progress`
+      });
+    }
+
+    // Calculate mission statistics
+    const endTime = new Date();
+    const duration = (endTime - mission.startTime) / (1000 * 60); // in minutes
+
+    // Update mission status and end time
+    mission.status = 'completed';
+    mission.endTime = endTime;
+    mission.progress = 100;
+    await mission.save();
+
+    // Update drone status
+    if (mission.drone) {
+      await Drone.findByIdAndUpdate(mission.drone, { status: 'available' });
+    }
+
+    // Create a mission report
+    const report = await Report.create({
+      missionId: mission._id,
+      missionName: mission.name,
+      droneId: mission.drone,
+      startTime: mission.startTime,
+      endTime,
+      duration,
+      surveyType: mission.surveyType,
+      coverageArea: mission.coverageArea,
+      waypoints: mission.waypoints,
+      status: 'completed',
+      createdBy: req.user.id
+    });
+
+    // Emit mission completed event
+    req.io.emit('missionCompleted', { mission, report });
+
+    res.status(200).json({
+      success: true,
+      data: { mission, report }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Abort a mission
+// @route   POST /api/missions/:id/abort
+// @access  Private
+exports.abortMission = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    
+    const mission = await Mission.findById(req.params.id);
+
+    if (!mission) {
+      return res.status(404).json({
+        success: false,
+        message: `Mission not found with id of ${req.params.id}`
+      });
+    }
+
+    // Check if mission can be aborted
+    if (!['scheduled', 'in-progress'].includes(mission.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Mission with ID ${req.params.id} cannot be aborted in its current state`
+      });
+    }
+
+    // Calculate mission statistics if it was in progress
+    let duration = 0;
+    let endTime = new Date();
+    
+    if (mission.status === 'in-progress' && mission.startTime) {
+      duration = (endTime - mission.startTime) / (1000 * 60); // in minutes
+    }
+
+    // Update mission status and end time
+    mission.status = 'aborted';
+    mission.endTime = endTime;
+    mission.abortReason = reason || 'No reason provided';
+    await mission.save();
+
+    // Update drone status
+    if (mission.drone) {
+      await Drone.findByIdAndUpdate(mission.drone, { status: 'available' });
+    }
+
+    // Create a mission report for aborted mission
+    if (mission.status === 'in-progress') {
+      await Report.create({
+        missionId: mission._id,
+        missionName: mission.name,
+        droneId: mission.drone,
+        startTime: mission.startTime,
+        endTime,
+        duration,
+        surveyType: mission.surveyType,
+        coverageArea: mission.coverageArea,
+        waypoints: mission.waypoints,
+        status: 'aborted',
+        notes: `Mission aborted. Reason: ${mission.abortReason}`,
+        createdBy: req.user.id
+      });
+    }
+
+    // Emit mission aborted event
+    req.io.emit('missionAborted', { mission });
+
+    res.status(200).json({
+      success: true,
+      data: mission
+    });
+  } catch (error) {
+    next(error);
   }
 };

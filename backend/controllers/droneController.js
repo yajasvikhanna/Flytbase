@@ -1,185 +1,213 @@
-// backend/controllers/droneController.js
+/**
+ * Drone controller
+ * Handles all drone-related operations including CRUD and status updates
+ */
 const Drone = require('../models/Drone');
+const Mission = require('../models/Mission');
 
-// Get all drones
-exports.getAllDrones = async (req, res) => {
+// @desc    Get all drones
+// @route   GET /api/drones
+// @access  Private
+exports.getDrones = async (req, res, next) => {
   try {
-    const drones = await Drone.find();
+    // Allow filtering by status, location, etc.
+    const query = { ...req.query };
     
+    // Find all drones matching the query
+    const drones = await Drone.find(query);
+
     res.status(200).json({
-      status: 'success',
-      results: drones.length,
-      data: {
-        drones
-      }
+      success: true,
+      count: drones.length,
+      data: drones
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
+    next(error);
   }
 };
 
-// Get single drone
-exports.getDrone = async (req, res) => {
+// @desc    Get single drone
+// @route   GET /api/drones/:id
+// @access  Private
+exports.getDrone = async (req, res, next) => {
   try {
     const drone = await Drone.findById(req.params.id);
-    
+
     if (!drone) {
       return res.status(404).json({
-        status: 'fail',
-        message: 'No drone found with that ID'
+        success: false,
+        message: `Drone not found with id of ${req.params.id}`
       });
     }
-    
+
     res.status(200).json({
-      status: 'success',
-      data: {
-        drone
-      }
+      success: true,
+      data: drone
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
+    next(error);
   }
 };
 
-// Create new drone
-exports.createDrone = async (req, res) => {
+// @desc    Create new drone
+// @route   POST /api/drones
+// @access  Private
+exports.createDrone = async (req, res, next) => {
   try {
-    const newDrone = await Drone.create(req.body);
+    // Add organization of the logged-in user
+    req.body.organization = req.user.organization;
     
+    const drone = await Drone.create(req.body);
+
     res.status(201).json({
-      status: 'success',
-      data: {
-        drone: newDrone
-      }
+      success: true,
+      data: drone
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
+    next(error);
   }
 };
 
-// Update drone
-exports.updateDrone = async (req, res) => {
+// @desc    Update drone
+// @route   PUT /api/drones/:id
+// @access  Private
+exports.updateDrone = async (req, res, next) => {
   try {
-    const drone = await Drone.findByIdAndUpdate(req.params.id, req.body, {
+    let drone = await Drone.findById(req.params.id);
+
+    if (!drone) {
+      return res.status(404).json({
+        success: false,
+        message: `Drone not found with id of ${req.params.id}`
+      });
+    }
+
+    // Ensure user has permission to update this drone
+    if (drone.organization.toString() !== req.user.organization && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: `User ${req.user.id} is not authorized to update this drone`
+      });
+    }
+
+    drone = await Drone.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
     });
-    
-    if (!drone) {
-      return res.status(404).json({
-        status: 'fail',
-        message: 'No drone found with that ID'
-      });
-    }
-    
+
     res.status(200).json({
-      status: 'success',
-      data: {
-        drone
-      }
+      success: true,
+      data: drone
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
+    next(error);
   }
 };
 
-// Delete drone
-exports.deleteDrone = async (req, res) => {
+// @desc    Delete drone
+// @route   DELETE /api/drones/:id
+// @access  Private
+exports.deleteDrone = async (req, res, next) => {
   try {
-    const drone = await Drone.findByIdAndDelete(req.params.id);
-    
+    const drone = await Drone.findById(req.params.id);
+
     if (!drone) {
       return res.status(404).json({
-        status: 'fail',
-        message: 'No drone found with that ID'
+        success: false,
+        message: `Drone not found with id of ${req.params.id}`
       });
     }
-    
-    res.status(204).json({
-      status: 'success',
-      data: null
-    });
-  } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
-  }
-};
 
-// Update drone status
-exports.updateDroneStatus = async (req, res) => {
-  try {
-    const { status, batteryLevel } = req.body;
-    
-    if (!status) {
+    // Ensure user has permission to delete this drone
+    if (drone.organization.toString() !== req.user.organization && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: `User ${req.user.id} is not authorized to delete this drone`
+      });
+    }
+
+    // Check if drone is currently assigned to any active missions
+    const activeMission = await Mission.findOne({
+      drone: drone._id,
+      status: { $in: ['scheduled', 'in-progress'] }
+    });
+
+    if (activeMission) {
       return res.status(400).json({
-        status: 'fail',
-        message: 'Please provide status'
+        success: false,
+        message: `Cannot delete drone as it is currently assigned to active mission: ${activeMission._id}`
       });
     }
-    
-    const updateData = { status };
-    if (batteryLevel !== undefined) {
-      updateData.batteryLevel = batteryLevel;
-    }
-    
-    const drone = await Drone.findByIdAndUpdate(req.params.id, updateData, {
-      new: true,
-      runValidators: true
-    });
-    
-    if (!drone) {
-      return res.status(404).json({
-        status: 'fail',
-        message: 'No drone found with that ID'
-      });
-    }
-    
+
+    await drone.remove();
+
     res.status(200).json({
-      status: 'success',
-      data: {
-        drone
-      }
+      success: true,
+      data: {}
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
-    });
+    next(error);
   }
 };
 
-// Get drones by site
-exports.getDronesBySite = async (req, res) => {
+// @desc    Update drone status (battery, location, etc.)
+// @route   PATCH /api/drones/:id/status
+// @access  Private
+exports.updateDroneStatus = async (req, res, next) => {
   try {
-    const { site } = req.params;
+    const { batteryLevel, lat, lng, altitude, status } = req.body;
     
-    const drones = await Drone.find({ 'location.site': site });
+    const updateData = {};
     
+    // Only update provided fields
+    if (batteryLevel !== undefined) updateData.batteryLevel = batteryLevel;
+    if (lat !== undefined && lng !== undefined) {
+      updateData.currentLocation = { lat, lng };
+    }
+    if (altitude !== undefined) updateData.currentAltitude = altitude;
+    if (status !== undefined) updateData.status = status;
+    
+    const drone = await Drone.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    if (!drone) {
+      return res.status(404).json({
+        success: false,
+        message: `Drone not found with id of ${req.params.id}`
+      });
+    }
+
+    // Emit drone status update via Socket.io
+    req.io.emit('droneStatusUpdate', { droneId: drone._id, ...updateData });
+
     res.status(200).json({
-      status: 'success',
-      results: drones.length,
-      data: {
-        drones
-      }
+      success: true,
+      data: drone
     });
   } catch (error) {
-    res.status(400).json({
-      status: 'fail',
-      message: error.message
+    next(error);
+  }
+};
+
+// @desc    Get all available drones
+// @route   GET /api/drones/available
+// @access  Private
+exports.getAvailableDrones = async (req, res, next) => {
+  try {
+    const drones = await Drone.find({ 
+      status: 'available',
+      organization: req.user.organization
     });
+
+    res.status(200).json({
+      success: true,
+      count: drones.length,
+      data: drones
+    });
+  } catch (error) {
+    next(error);
   }
 };

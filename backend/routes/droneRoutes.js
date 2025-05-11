@@ -1,29 +1,47 @@
+/**
+ * Drone management routes
+ */
 const express = require('express');
-const droneController = require('../controllers/droneController');
-const authController = require('../controllers/authController');
+const {
+  getDrones,
+  getDrone,
+  createDrone,
+  updateDrone,
+  deleteDrone,
+  updateDroneStatus,
+  getAvailableDrones
+} = require('../controllers/droneController');
+
+// Include mission controller for drone-specific mission routes
+const { getDroneMissions } = require('../controllers/missionController');
+
+const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Protect all routes after this middleware
-router.use(authController.protect);
+// Protect all routes
+router.use(protect);
 
-router
-  .route('/')
-  .get(droneController.getAllDrones)
-  .post(authController.restrictTo('admin', 'supervisor'), droneController.createDrone);
+// Basic drone CRUD routes
+router.route('/')
+  .get(getDrones)
+  .post(authorize('admin', 'manager'), createDrone);
 
-router
-  .route('/:id')
-  .get(droneController.getDrone)
-  .patch(authController.restrictTo('admin', 'supervisor'), droneController.updateDrone)
-  .delete(authController.restrictTo('admin'), droneController.deleteDrone);
+// Available drones route
+router.get('/available', getAvailableDrones);
 
-router
-  .route('/:id/status')
-  .patch(droneController.updateDroneStatus);
+// Single drone routes
+router.route('/:id')
+  .get(getDrone)
+  .put(authorize('admin', 'manager'), updateDrone)
+  .delete(authorize('admin', 'manager'), deleteDrone);
 
-router
-  .route('/site/:site')
-  .get(droneController.getDronesBySite);
+// Drone status routes
+router.route('/:id/status')
+  .patch(updateDroneStatus);
+
+// Drone mission routes
+router.route('/:droneId/missions')
+  .get(getDroneMissions);
 
 module.exports = router;

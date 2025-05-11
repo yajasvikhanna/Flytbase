@@ -1,25 +1,35 @@
+/**
+ * Reporting and analytics routes
+ */
 const express = require('express');
-const reportController = require('../controllers/reportController');
-const authController = require('../controllers/authController');
+const {
+  getReports,
+  getReport,
+  createReport,
+  updateReport,
+  deleteReport,
+  getOrganizationStats
+} = require('../controllers/reportController');
+
+const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Protect all routes after this middleware
-router.use(authController.protect);
+// Protect all routes
+router.use(protect);
 
-router
-  .route('/')
-  .get(reportController.getAllReports)
-  .post(reportController.createReport);
+// Organization-level statistics
+router.get('/stats', getOrganizationStats);
 
-router
-  .route('/:id')
-  .get(reportController.getReport)
-  .patch(reportController.updateReport)
-  .delete(authController.restrictTo('admin', 'supervisor'), reportController.deleteReport);
+// Report CRUD routes
+router.route('/')
+  .get(getReports)
+  .post(createReport);
 
-router
-  .route('/mission/:missionId')
-  .get(reportController.getReportsByMission);
+// Single report routes
+router.route('/:id')
+  .get(getReport)
+  .put(updateReport)
+  .delete(deleteReport);
 
 module.exports = router;

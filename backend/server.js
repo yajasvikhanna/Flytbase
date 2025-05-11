@@ -1,79 +1,76 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const http = require('http');
-const socketIo = require('socket.io');
-
-// Import routes
-// const authRoutes = require('./routes/authRoutes');
-// const droneRoutes = require('./routes/droneRoutes');
-// const missionRoutes = require('./routes/missionRoutes');
-// const reportRoutes = require('./routes/reportRoutes');
+const socketIO = require('socket.io');
+const path = require('path');
+require('dotenv').config();
 
 // Import socket configuration
-const setupSocket = require('./socket');
+const configureSocket = require('./socket');
 
-// Import database connection
-const connectDB = require('./config/db');
+// Import routes
+const authRoutes = require('./routes/authRoutes');
+const droneRoutes = require('./routes/droneRoutes');
+const missionRoutes = require('./routes/missionRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
-// Load environment variables
-dotenv.config();
-
-// Connect to database
-connectDB();
+// Error handling middleware
+const errorHandler = require('./middleware/errorHandler');
 
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
+
+// Configure Socket.io
+const io = socketIO(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: process.env.CLIENT_URL || 'http://localhost:5173',
     methods: ["GET", "POST"],
     credentials: true
   }
 });
 
-// Set up socket.io
-setupSocket(io);
-
-// Middleware
+// Configure middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
   credentials: true
 }));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Routes
-// app.use('/api/auth', authRoutes);
-// app.use('/api/drones', droneRoutes);
-// app.use('/api/missions', missionRoutes);
-// app.use('/api/reports', reportRoutes);
+// Connect to MongoDB
+// Connect to MongoDB using the URI from the .env file
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('MongoDB connected successfully'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
-// Health check route
+
+// Setup Socket.io
+configureSocket(io);
+
+// API routes
+app.use('/api/auth', authRoutes);
+app.use('/api/drones', droneRoutes);
+app.use('/api/missions', missionRoutes);
+app.use('/api/reports', reportRoutes);
+
+// Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'success',
-    message: 'API is running'
-  });
+  res.status(200).json({ status: 'ok', message: 'Server is running' });
 });
 
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    status: 'error',
-    message: err.message || 'Something went wrong!'
+// Serve static assets if in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../frontend/dist')));
+  
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/dist', 'index.html'));
   });
-});
+}
 
-// Handle unhandled routes
-app.all('*', (req, res) => {
-  res.status(404).json({
-    status: 'fail',
-    message: `Can't find ${req.originalUrl} on this server!`
-  });
-});
+// Global error handling middleware
+app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 5000;
@@ -83,17 +80,8 @@ server.listen(PORT, () => {
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
-  console.log('UNHANDLED REJECTION! 💥 Shutting down...');
-  console.log(err.name, err.message);
-  server.close(() => {
-    process.exit(1);
-  });
+  console.error('Unhandled Promise Rejection:', err);
+  // Don't crash the server, just log the error
 });
 
-// Handle SIGTERM
-process.on('SIGTERM', () => {
-  console.log('👋 SIGTERM RECEIVED. Shutting down gracefully');
-  server.close(() => {
-    console.log('💥 Process terminated!');
-  });
-});
+module.exports = { app, server, io };
