@@ -25,7 +25,7 @@ const server = http.createServer(app);
 // Configure Socket.io
 const io = socketIO(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: [process.env.CLIENT_URL || 'http://localhost:5173', 'https://flytbase-three.vercel.app'], // Add your deployed frontend URL
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -33,7 +33,7 @@ const io = socketIO(server, {
 
 // Configure middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: [process.env.CLIENT_URL || 'http://localhost:5173', 'https://flytbase-three.vercel.app'], // Add your deployed frontend URL
   credentials: true
 }));
 app.use(express.json());
