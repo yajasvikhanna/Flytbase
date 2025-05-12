@@ -4,6 +4,11 @@ An end-to-end real-time drone management and mission control system built using 
 
 ---
 
+## 🎥 Project Preview
+
+![Drone Survey System Preview](./Flytbase.gif)
+
+
 ## 🚀 Live Project
 ## 🚀 Live Demo
 
