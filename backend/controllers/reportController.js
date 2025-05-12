@@ -90,7 +90,7 @@ exports.getReports = async (req, res, next) => {
 exports.getReport = async (req, res, next) => {
   try {
     const report = await Report.findById(req.params.id)
-      .populate('droneId', 'name model')
+      .populate('drone', 'name model')
       .populate('createdBy', 'name');
 
     if (!report) {
