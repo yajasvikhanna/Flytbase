@@ -23,13 +23,23 @@ const app = express();
 const server = http.createServer(app);
 
 // Configure Socket.io
+// const io = socketIO(server, {
+//   cors: {
+//     origin: [process.env.CLIENT_URL || 'http://localhost:5173', 'https://flytbase-three.vercel.app'], // Add your deployed frontend URL
+//     methods: ["GET", "POST"],
+//     credentials: true
+//   }
+// });
+
+
 const io = socketIO(server, {
   cors: {
-    origin: [process.env.CLIENT_URL || 'http://localhost:5173', 'https://flytbase-three.vercel.app'], // Add your deployed frontend URL
+    origin: "*", // Allow all origins
     methods: ["GET", "POST"],
-    credentials: true
+    credentials: false // Set to false since credentials aren't allowed with origin '*'
   }
 });
+
 
 // Configure middleware
 // app.use(cors({
