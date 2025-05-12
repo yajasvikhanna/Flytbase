@@ -1,12 +1,194 @@
-# React + Vite
+# 🛰️ Drone Survey System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An end-to-end real-time drone management and mission control system built using the MERN stack and modern frontend tooling.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🚀 Live Project
+## 🚀 Live Demo
 
-## Expanding the ESLint configuration
+👉 **[Try the Live App (Login)](https://flytbase-three.vercel.app/login)** 
+- 🌐 **Frontend:** https://flytbase-three.vercel.app/
+- 🌐 **Backend API:** https://flytbase-e1ns.onrender.com
+- 📦 **GitHub Repository:** [Flytbase on GitHub](https://github.com/yajasvikhanna/Flytbase)
+- 
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+> Access granted to `assignments@flytbase.com` as a contributor.
+
+---
+
+## 🧭 Project Structure
+
+```
+Flytbase/
+├── backend/               # Node.js + Express backend
+│   ├── controllers/       # Route handlers
+│   ├── middleware/        # Auth, error handlers
+│   ├── models/            # Mongoose schemas
+│   ├── routes/            # API route files
+│   ├── services/          # Business logic
+│   ├── socket/            # WebSocket integration (Socket.IO)
+│   ├── config/            # DB and env config
+│   ├── server.js
+│   └── .env
+│
+├── public/                # React public assets
+├── src/                   # React + Vite frontend source code
+│   ├── assets/
+│   ├── components/        # Reusable UI components
+│   ├── pages/             # Main route pages (Dashboard, Reports, etc.)
+│   ├── services/          # API and auth services
+│   ├── utils/
+│   ├── App.jsx
+│   └── main.jsx
+│
+├── vite.config.js
+├── index.html
+├── package.json
+├── README.md
+└── .gitignore
+```
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+- **React** (with Vite for fast builds)
+- **Mapbox GL JS** (map interface)
+- **Axios** (API calls)
+- **Socket.IO-client** (WebSocket integration)
+- **Tailwind CSS** (UI styling)
+
+### Backend
+- **Node.js** + **Express.js**
+- **MongoDB Atlas** (cloud DB)
+- **Mongoose** (ODM for MongoDB)
+- **JWT** (authentication)
+- **Socket.IO** (WebSocket server)
+
+### Deployment
+- **Frontend**: Vercel — [flytbase-three.vercel.app](https://flytbase-three.vercel.app/)
+- **Backend**: Render — [flytbase-e1ns.onrender.com](https://flytbase-e1ns.onrender.com)
+
+---
+
+## 🔧 Project Setup
+
+### 🔹 Prerequisites
+- Node.js (v18+ recommended)
+- MongoDB Atlas account
+- Vite CLI (`npm create vite@latest`)
+
+---
+
+### 🔹 Backend Setup
+
+```bash
+cd backend
+npm install
+# Create .env file based on .env.example
+npm start
+```
+
+`.env` example:
+```
+PORT=5000
+MONGO_URI=<your_mongo_uri>
+JWT_SECRET=<your_jwt_secret>
+CLIENT_URL=http://localhost:5173
+```
+
+---
+
+### 🔹 Frontend Setup
+
+```bash
+npm install
+npm run dev
+```
+
+---
+
+## ✅ Key Features
+
+### 1. **Authentication Module**
+- Secure JWT-based login/signup.
+- Form validation on both client & server.
+
+### 2. **Dashboard**
+- Overview of drone status and active missions.
+- Real-time updates via WebSocket.
+
+### 3. **Fleet Management**
+- Displays all drones.
+- Statistics: ID, current state, past usage.
+
+### 4. **Active Missions**
+- List of all ongoing drone missions.
+- Live progress and location updates.
+
+### 5. **Create Mission**
+- Multi-step form with validation.
+- Mapbox interface to set boundaries/routes.
+
+### 6. **Reports Module**
+- Summary of completed missions.
+- Data on usage, time, and involved drones.
+
+### 7. **Profile Module**
+- Update user profile and preferences.
+- Toggle real-time notification settings.
+
+---
+
+## 🧠 Development Approach
+
+| Area                | Implementation |
+|---------------------|----------------|
+| **Modularity**      | Separate concerns (routes, services, components) |
+| **Real-Time**       | WebSocket via Socket.IO |
+| **Mapping**         | Lightweight & customizable Mapbox integration |
+| **Scalability**     | Frontend & backend decoupled for microservice readiness |
+
+---
+
+## ⚖️ Trade-offs Considered
+
+| Decision                    | Trade-off |
+|-----------------------------|-----------|
+| Mapbox vs Google Maps       | Chose Mapbox for flexibility & cost-efficiency |
+| Socket.IO over MQTT         | Simpler real-time setup, less performant for massive scale |
+| Client-side form validation | Fast UX, server still handles secure validation |
+| Vercel + Render Hosting     | Easy CI/CD, but CORS handling needed |
+
+---
+
+## 🛡️ Safety & Adaptability
+
+- 🔐 JWT Authentication
+- 🧩 Role-Based Access (extensible)
+- 🧪 Robust Validation (both sides)
+- 📡 Real-Time Monitoring via Socket.IO
+- 🔌 Modular Features (easy to extend)
+
+---
+
+## 📹 Demo Video
+
+A recorded demo showcasing all modules will be submitted separately.
+
+---
+
+## 🎁 Bonus Features
+
+- Real-time drone tracking with WebSocket
+- Modular UI components with Tailwind
+- Notification preference management
+- Optimized Vite builds for performance
+
+---
+
+## 📩 Feedback & Contributions
+
+For feedback or collaboration, feel free to open issues or pull requests on the [GitHub Repo](https://github.com/yajasvikhanna/Flytbase).
