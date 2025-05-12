@@ -61,14 +61,14 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Server is running' });
 });
 
-// Serve static assets if in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../frontend/dist')));
+// // Serve static assets if in production
+// if (process.env.NODE_ENV === 'production') {
+//   app.use(express.static(path.join(__dirname, '../frontend/dist')));
   
-  app.get('*wildcard', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/dist', 'index.html'));
-  });
-}
+//   app.get('*wildcard', (req, res) => {
+//     res.sendFile(path.join(__dirname, '../frontend/dist', 'index.html'));
+//   });
+// }
 
 // Global error handling middleware
 app.use(errorHandler);
